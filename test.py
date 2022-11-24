@@ -15,14 +15,14 @@ from Con_UCB import Con_UCB
 from ConLinUCB import ConLinUCB
 import User
 import random
-from multiprocessing import Pool
 import datetime
+from multiprocessing import Pool
 
 thread_num = 10
 
 
 class simulateExp:
-    def __init__(self, users, arms, suparms, out_folder, pool_size, suparm_pool_size,batchSize=50, noise=None, suparm_noise=None,
+    def __init__(self, users, arms, suparms, out_folder, pool_size, batchSize=50, noise=None, suparm_noise=None,
                  test_iter=1000, alias='time', dim=50):
         self.users = users
         self.all_arms = arms
@@ -35,7 +35,6 @@ class simulateExp:
         self.test_iter = test_iter
         self.alias = alias
         self.dim = dim
-        self.poolSupArmSize=suparm_pool_size
 
     def getReward(self, u, arm):
         return np.dot(u.theta.T, arm.fv)
@@ -48,16 +47,6 @@ class simulateExp:
         for si in selected_pool_index:
             self.armPool[si] = self.all_arms[si]
         if len(self.armPool) != self.poolArticleSize:
-            raise AssertionError
-
-    def regulateSupArmPool(self):
-        # Randomly generate articles
-        all_index = range(0, len(self.suparms))
-        selected_pool_index = np.random.choice(all_index, self.poolSupArmSize, replace=False)
-        self.suparmPool = {}
-        for si in selected_pool_index:
-            self.suparmPool[si] = self.suparms[si]
-        if len(self.suparmPool) != self.poolSupArmSize:
             raise AssertionError
 
     def getSuparmReward(self, u, suparm):
@@ -107,10 +96,9 @@ class simulateExp:
         debug_fw = None
         for iter_ in range(0, test_iter):
 
-            Addi_budget = self.getAddiBudget(algorithms['ConUCB'].bt, iter_)
+            Addi_budget = self.getAddiBudget(algorithms['Arm-Con'].bt, iter_)
             print('[simulationPerUser] uid: %d, iter: %d, addi_budget: %d' % (u.uid, iter_, Addi_budget))
             self.regulateArticlePool()
-            
             cur_iter_noise = self.noise()
             cur_iter_suparm_noise = self.suparm_noise()
             Optimal_Reward, OptimalArticle = self.getOptimalReward(u, self.armPool)
@@ -129,9 +117,9 @@ class simulateExp:
                     X_t = None
                     if Addi_budget > 0:
                         X_t = self.getX(self.armPool)
-                        self.regulateSupArmPool()
+
                     while tmp_budget > 0:
-                        pickedsuparm = alg.decide_suparms(self.suparmPool, u.uid, np.linalg.norm(u.theta),
+                        pickedsuparm = alg.decide_suparms(self.suparms, u.uid, np.linalg.norm(u.theta),
                                                           arms=self.armPool, X_t=X_t, debug_fw=debug_fw)
                         reward = self.getSuparmReward(u, pickedsuparm) + cur_iter_suparm_noise
                         alg.updateSuparmParameters(pickedsuparm, reward, u.uid)
@@ -146,7 +134,7 @@ class simulateExp:
                         X_t = self.getX(self.armPool)
 
                     while tmp_budget > 0:
-                        pickedsuparm = alg.decide_suparms(self.suparmPool, u.uid, np.linalg.norm(u.theta),
+                        pickedsuparm = alg.decide_suparms(self.suparms, u.uid, np.linalg.norm(u.theta),
                                                           arms=self.armPool, X_t=X_t, debug_fw=debug_fw)
                         reward = self.getSuparmReward(u, pickedsuparm) + cur_iter_suparm_noise
                         alg.updateSuparmParameters(pickedsuparm, reward, u.uid)
@@ -162,11 +150,9 @@ class simulateExp:
                         X_t = self.getX(self.armPool)
 
                     while tmp_budget > 0:
-                        pickedsuparm = alg.decide_suparms(self.suparmPool, u.uid, np.linalg.norm(u.theta),
+                        pickedsuparm = alg.decide_suparms(self.suparms, u.uid, np.linalg.norm(u.theta),
                                                           arms=self.armPool, X_t=X_t, debug_fw=debug_fw)
                         reward = self.getSuparmReward(u, pickedsuparm) + cur_iter_suparm_noise
-
-                        #changed:
                         alg.updateParameters(pickedsuparm,reward,u.uid)
                         # alg.updateSuparmParameters(pickedsuparm, reward, u.uid)
                         tmp_budget -= 1
@@ -284,13 +270,15 @@ def suparm_noise():
 
 
 if __name__ == '__main__':
+    import datetime
+    time2 = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    with open('time.txt','w') as f:
+        f.write(time2)
     parser = argparse.ArgumentParser(description='')
     parser.add_argument('--in_folder', dest='in_folder', help='input the folder containing input files')
     parser.add_argument('--out_folder', dest='out_folder', help='input the folder to output')
     parser.add_argument('--poolSize', dest='poolSize', type=int, help='poolSize of each iteration')
-    parser.add_argument('--suparmpoolSize', dest='suparmpoolSize', type=int, help='suparmpoolSize of each iteration')
     parser.add_argument('--seedIndex', dest='seedIndex', type=int, help='seedIndex')
-
 
     args = parser.parse_args()
 
@@ -303,21 +291,24 @@ if __name__ == '__main__':
     # load Suparms
     SAM = SupArm.SupArmManager(args.in_folder, AM)
     SAM.loadArmSuparmRelation()
-    print('[main] Finish loading suparms: %d'%SAM.num_suparm)
+    print('[main] Finish loading suparms')
     # load User
     UM = User.UserManager(args.in_folder)
     UM.loadUser()
     print('[main] Finishing loading users: %d' % UM.n_user)
 
-    simExperiment = simulateExp(UM.users, AM.arms, SAM.suparms, args.out_folder, args.poolSize, args.suparmpoolSize,conf.batch_size, noise,
+    simExperiment = simulateExp(UM.users, AM.arms, SAM.suparms, args.out_folder, args.poolSize, conf.batch_size, noise,
                                 suparm_noise, conf.test_iter, alias="time", dim=AM.dim)
     algorithms = {}
+
 
     algorithms['LinUCB'] = LinUCB(AM.dim, conf.linucb_parameter)
     algorithms['Arm-Con'] = LinUCB(AM.dim, conf.arm_con_para, bt=conf.bt)
     algorithms['ConUCB'] = Con_UCB(AM.dim, conf.conucb_para, 'optimal_greedy', bt=conf.bt)
-    algorithms['ConLinUCB-BS']=ConLinUCB(AM.dim,conf.conlinucb_para,'forced exploration with BS',bt=conf.bt)
-    algorithms['ConLinUCB-UCB']=ConLinUCB(AM.dim,conf.conlinucb_para,'ucb',bt=conf.bt)
-    algorithms['ConLinUCB-MCR']=ConLinUCB(AM.dim,conf.conlinucb_para,'pick key term with max radius',bt=conf.bt)
+    algorithms['ConLinUCB-BS']=ConLinUCB(AM.dim,conf.linucb_force_exploration_para,'forced exploration with BS',bt=conf.bt)
+    algorithms['ConLinUCB-UCB']=ConLinUCB(AM.dim,conf.linucb_more_info,'UCB',bt=conf.bt)
+    algorithms['ConLinUCB-MCR']=ConLinUCB(AM.dim,conf.linucb_para,'pick key term with max radius',bt=conf.bt)
     simExperiment.runAlgorithms(algorithms)
-
+    time3 = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    with open('time.txt','a') as f:
+        f.write(time3)

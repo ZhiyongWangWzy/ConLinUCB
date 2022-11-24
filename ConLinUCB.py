@@ -1,4 +1,5 @@
 import numpy as np
+import math
 import random
 
 
@@ -10,15 +11,20 @@ class ConLinUCB_UserStruct:
         self.time = 1
         self.suparms_time = 1
 
+        # intialize the feedback on arm slides
+
         self.M = para['lambda'] * np.identity(n=self.dim)
         self.Y = np.zeros((self.dim, 1))
         self.Minv = np.linalg.inv(self.M)
 
         if init == 'random':
+            # self.tilde_theta = np.random.rand((self.dim, 1))
             self.theta = np.random.rand((self.dim, 1))
         else:
+            # self.tilde_theta = np.zeros((self.dim, 1))
             self.theta = np.zeros((self.dim, 1))
 
+        # self.cal_alpha = False
         self.gtheta_norm = gtheta_norm
         self.alpha = self.para['alpha']
 
@@ -30,6 +36,7 @@ class ConLinUCB_UserStruct:
         result_b = 1 + np.dot(np.dot(fv.T, self.Minv), fv)
         norm_M = np.linalg.norm(result_a)
         return norm_M * norm_M / result_b
+
 
     def getRadius(self,fv,armpool):
         radius=0
@@ -61,9 +68,14 @@ class ConLinUCB_UserStruct:
         return max_eigen
 
     def getProb(self, fv):
+
         mean = np.dot(self.theta.T, fv)
+        # X_M_tM = np.dot(fv.T, self.M_tildeM_M)
+        # X_M_tM_M_X = np.dot(X_M_tM, fv)
         var1 = np.sqrt(np.dot(np.dot(fv.T, self.Minv), fv))
-        pta = mean + self.alpha * var1
+        # var2 = np.sqrt(X_M_tM_M_X)
+        #pta = mean + self.para['lambda'] * self.alpha * var1 + (1 - self.para['lambda']) * self.tilde_alpha * var2
+        pta = mean + self.alpha * var1 # changed
         return pta
 
     def getInv(self, old_Minv, nfv):
@@ -81,6 +93,7 @@ class ConLinUCB_UserStruct:
         self.theta = np.dot(self.Minv, self.Y)
         self.time += 1
 
+
 class ConLinUCB:
 
     def __init__(self, dim, para, suparm_strategy='random', init='zero', bt=lambda t: t + 1):
@@ -96,7 +109,6 @@ class ConLinUCB:
             tmp = self.users[uid]
         except:
             self.users[uid] = ConLinUCB_UserStruct(uid, self.dim, self.para, gtheta_norm=norm)
-
         left_budget = self.bt(self.users[uid].time) - self.bt(self.users[uid].time - 1)
         if left_budget > 0:
             return int(left_budget)
@@ -124,7 +136,6 @@ class ConLinUCB:
                     picked_suparm = xinfo
                     max_C = x_pta
             return picked_suparm
-
         elif self.suparm_strategy == 'forced exploration with BS':
             all_span_vectors=[]
             with open('saved_spanner.txt','r') as f:
@@ -133,7 +144,7 @@ class ConLinUCB:
             b = list(all_span_vectors.strip('[').strip(']').split(', '))
             selected_index=int(random.choice(b))
             return pool_suparm[selected_index]
-        elif self.suparm_strategy =='ucb':
+        elif self.suparm_strategy =='UCB':
             picked_suparm = None
             max_C = float('-inf')
             for x, xinfo in pool_suparm.items():
@@ -152,7 +163,6 @@ class ConLinUCB:
                     max_C = max_eigen
             return picked_suparm
         raise AssertionError
-
 
     def decide(self, pool_arms, uid, norm, debug_fw=None, best_arm=None):
         try:
