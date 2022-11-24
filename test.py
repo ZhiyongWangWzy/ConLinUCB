@@ -16,6 +16,7 @@ from ConLinUCB import ConLinUCB
 import User
 import random
 from multiprocessing import Pool
+import datetime
 
 thread_num = 10
 
